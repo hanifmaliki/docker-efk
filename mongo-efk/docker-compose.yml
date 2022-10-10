@@ -1,0 +1,72 @@
+version: "3"
+
+services:
+
+  fluentd:
+    build: ./fluentd
+    container_name: fluentd
+    volumes:
+      - ./fluentd/conf:/fluentd/etc
+    environment:
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+    links:
+      - "elasticsearch"
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+
+  # Elasticsearch requires your vm.max_map_count set to 262144
+  # Default will be 65530
+  # sudo sysctl -w vm.max_map_count=262144
+  # Add this to /etc/sysctl.conf for making it permanent
+  # sudo /bin/su -c "echo 'vm.max_map_count=262144' >> /etc/sysctl.conf"
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.6
+    container_name: elasticsearch
+    volumes:
+      - ./logs:/usr/share/elasticsearch/data
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+    ports:
+      - 9200:9200
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.6
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_USERNAME=$ELASTIC_USERNAME
+      - ELASTICSEARCH_PASSWORD=$ELASTIC_PASSWORD
+    links:
+      - elasticsearch
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+
+  mongo:
+    image: mongo:4.4.17
+    container_name: mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    links:
+      - fluentd
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: mongo.access
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: example
+      ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
